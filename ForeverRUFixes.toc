@@ -1,8 +1,0 @@
-## Interface: 16001
-## Title: Forever RU Fixes
-## Notes: Fixes broken Russian localization strings in WoW Forever Beta UI.
-## Notes-ruRU: Исправляет отсутствующие русские строки интерфейса WoW Forever Beta.
-## Author: makaren-pro
-## Version: 1.2.0
-
-ForeverRUFixes.lua
