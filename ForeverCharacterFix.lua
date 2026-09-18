@@ -1,17 +1,18 @@
 local ADDON_NAME = ...
 
--- ForeverCharacterFix 1.2.2
+-- ForeverCharacterFix 1.2.3
 -- ruRU Character Frame workaround for WoW Forever Beta.
 --
 -- The localization fix taints Blizzard execution on the current beta build.
--- We suppress only secret-value Lua errors explicitly attributed to
--- ForeverCharacterFix. Unrelated Lua errors continue to use the existing handler.
+-- We suppress only narrowly identified secret-value Lua errors caused by
+-- the Character Frame workaround. Unrelated Lua errors continue to use
+-- the existing handler.
 
 if GetLocale and GetLocale() ~= "ruRU" then
     return
 end
 
-local VERSION = "1.2.2"
+local VERSION = "1.2.3"
 
 local CLASS_TOKENS = {
     "WARRIOR",
@@ -133,6 +134,35 @@ local function IsForeverCharacterFixSecretTaintError(message)
         message:find("secret value", 1, true) ~= nil
 end
 
+local function IsKnownPaperDollCombatSecretValueError(message)
+    if type(message) ~= "string" then
+        return false
+    end
+
+    if type(InCombatLockdown) ~= "function" or not InCombatLockdown() then
+        return false
+    end
+
+    local isPaperDollAttackPowerError =
+        message:find("PaperDollFrameStats.lua", 1, true) ~= nil and
+        message:find("GetAttackPowerForStat", 1, true) ~= nil
+
+    if not isPaperDollAttackPowerError then
+        return false
+    end
+
+    return
+        message:find("Secret values are only allowed during untainted execution", 1, true) ~= nil or
+        message:find("secret number", 1, true) ~= nil or
+        message:find("secret value", 1, true) ~= nil
+end
+
+local function ShouldSuppressError(message)
+    return
+        IsForeverCharacterFixSecretTaintError(message) or
+        IsKnownPaperDollCombatSecretValueError(message)
+end
+
 local function InstallTargetedErrorFilter()
     if errorFilterInstalled then
         return true
@@ -150,7 +180,7 @@ local function InstallTargetedErrorFilter()
     previousErrorHandler = current
 
     local function ForeverCharacterFixErrorHandler(message)
-        if IsForeverCharacterFixSecretTaintError(message) then
+        if ShouldSuppressError(message) then
             suppressedErrors = suppressedErrors + 1
             return
         end
@@ -231,7 +261,7 @@ SlashCmdList.FOREVERCHARACTERFIX = function(msg)
     print("Apply count: " .. tostring(applyCount) .. "; last: " .. tostring(lastApplyReason))
     print("Missing strings written this session: " .. tostring(totalWrites))
     print("Targeted taint filter: " .. (errorFilterInstalled and "|cff00ff00active|r" or "|cffffff00not installed yet|r"))
-    print("Secret-value taint errors hidden: " .. tostring(suppressedErrors))
+    print("Known secret-value errors hidden: " .. tostring(suppressedErrors))
     print("Current class: " .. tostring(classToken))
 
     if classToken then
