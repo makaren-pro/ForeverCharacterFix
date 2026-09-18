@@ -22,8 +22,14 @@ jobs:
           set -euo pipefail
 
           TAG="${GITHUB_REF_NAME}"
+
+          if [[ ! "${TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Tag must look like v1.2.3"
+            exit 1
+          fi
+
           VERSION="${TAG#v}"
-          PACKAGE="ForeverRUFixes-${TAG}.zip"
+          PACKAGE="ForeverRUFixes-${VERSION}.zip"
 
           rm -rf dist
           mkdir -p dist/ForeverRUFixes
@@ -31,13 +37,15 @@ jobs:
           cp ForeverRUFixes.toc dist/ForeverRUFixes/
           cp ForeverRUFixes.lua dist/ForeverRUFixes/
 
+          sed -i -E "s/^## Version:.*/## Version: ${VERSION}/" dist/ForeverRUFixes/ForeverRUFixes.toc
+          sed -i -E "s/^local VERSION = \".*\"/local VERSION = \"${VERSION}\"/" dist/ForeverRUFixes/ForeverRUFixes.lua
+
           (
             cd dist
             zip -r "../${PACKAGE}" ForeverRUFixes
           )
 
           echo "PACKAGE=${PACKAGE}" >> "${GITHUB_ENV}"
-          echo "VERSION=${VERSION}" >> "${GITHUB_ENV}"
 
       - name: Create GitHub Release
         env:
