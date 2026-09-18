@@ -29,20 +29,20 @@ jobs:
           fi
 
           VERSION="${TAG#v}"
-          PACKAGE="ForeverRUFixes-${VERSION}.zip"
+          PACKAGE="ForeverCharacterFix-${VERSION}.zip"
 
           rm -rf dist
-          mkdir -p dist/ForeverRUFixes
+          mkdir -p dist/ForeverCharacterFix
 
-          cp ForeverRUFixes.toc dist/ForeverRUFixes/
-          cp ForeverRUFixes.lua dist/ForeverRUFixes/
+          cp ForeverCharacterFix.toc dist/ForeverCharacterFix/
+          cp ForeverCharacterFix.lua dist/ForeverCharacterFix/
 
-          sed -i -E "s/^## Version:.*/## Version: ${VERSION}/" dist/ForeverRUFixes/ForeverRUFixes.toc
-          sed -i -E "s/^local VERSION = \".*\"/local VERSION = \"${VERSION}\"/" dist/ForeverRUFixes/ForeverRUFixes.lua
+          sed -i -E "s/^## Version:.*/## Version: ${VERSION}/" dist/ForeverCharacterFix/ForeverCharacterFix.toc
+          sed -i -E "s/^local VERSION = \".*\"/local VERSION = \"${VERSION}\"/" dist/ForeverCharacterFix/ForeverCharacterFix.lua
 
           (
             cd dist
-            zip -r "../${PACKAGE}" ForeverRUFixes
+            zip -r "../${PACKAGE}" ForeverCharacterFix
           )
 
           echo "PACKAGE=${PACKAGE}" >> "${GITHUB_ENV}"
@@ -52,5 +52,5 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "${GITHUB_REF_NAME}" "${PACKAGE}" \
-            --title "ForeverRUFixes ${GITHUB_REF_NAME}" \
+            --title "ForeverCharacterFix ${GITHUB_REF_NAME}" \
             --generate-notes
