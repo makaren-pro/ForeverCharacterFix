@@ -3,8 +3,8 @@ local ADDON_NAME = ...
 -- ForeverCharacterFix 1.2.2
 -- ruRU Character Frame workaround for WoW Forever Beta.
 --
--- The localization fix still taints Blizzard execution on the current beta build.
--- We therefore suppress only secret-number Lua errors explicitly attributed to
+-- The localization fix taints Blizzard execution on the current beta build.
+-- We suppress only secret-value Lua errors explicitly attributed to
 -- ForeverCharacterFix. Unrelated Lua errors continue to use the existing handler.
 
 if GetLocale and GetLocale() ~= "ruRU" then
@@ -38,8 +38,8 @@ local applyCount = 0
 local lastApplyReason = "never"
 local suppressedErrors = 0
 
+local errorFilterInstalled = false
 local previousErrorHandler
-local ForeverCharacterFixErrorHandler
 
 local function Upper(value)
     if type(strupper) == "function" then
@@ -133,47 +133,45 @@ local function IsForeverCharacterFixSecretTaintError(message)
         message:find("secret value", 1, true) ~= nil
 end
 
-ForeverCharacterFixErrorHandler = function(message)
-    if IsForeverCharacterFixSecretTaintError(message) then
-        suppressedErrors = suppressedErrors + 1
-        return
+local function InstallTargetedErrorFilter()
+    if errorFilterInstalled then
+        return true
     end
 
-    if type(previousErrorHandler) == "function" then
-        return previousErrorHandler(message)
-    end
-end
-
-local function EnsureTargetedErrorFilter()
     if type(geterrorhandler) ~= "function" or type(seterrorhandler) ~= "function" then
         return false
     end
 
     local current = geterrorhandler()
-    if current == ForeverCharacterFixErrorHandler then
-        return true
-    end
-
     if type(current) ~= "function" then
         return false
     end
 
-    -- Preserve whichever error handler is active at this moment (Blizzard,
-    -- BugGrabber, BugSack, etc.) and forward every unrelated error to it.
     previousErrorHandler = current
-    seterrorhandler(ForeverCharacterFixErrorHandler)
 
-    return geterrorhandler() == ForeverCharacterFixErrorHandler
+    local function ForeverCharacterFixErrorHandler(message)
+        if IsForeverCharacterFixSecretTaintError(message) then
+            suppressedErrors = suppressedErrors + 1
+            return
+        end
+
+        return previousErrorHandler(message)
+    end
+
+    seterrorhandler(ForeverCharacterFixErrorHandler)
+    errorFilterInstalled = true
+    return true
 end
 
-local function ScheduleErrorFilterRefresh()
-    EnsureTargetedErrorFilter()
+local function ScheduleErrorFilterInstall()
+    if errorFilterInstalled then
+        return
+    end
 
     if C_Timer and C_Timer.After then
-        C_Timer.After(0, EnsureTargetedErrorFilter)
-        C_Timer.After(1, EnsureTargetedErrorFilter)
-        C_Timer.After(3, EnsureTargetedErrorFilter)
-        C_Timer.After(5, EnsureTargetedErrorFilter)
+        C_Timer.After(2, InstallTargetedErrorFilter)
+    else
+        InstallTargetedErrorFilter()
     end
 end
 
@@ -197,22 +195,14 @@ events:SetScript("OnEvent", function(self, event, arg1)
                     ApplyLocalizationFix("post Blizzard_UIPanels_Game")
                 end)
             end
-
-            ScheduleErrorFilterRefresh()
             return
-        end
-
-        -- Another addon may replace the global error handler while loading.
-        -- Refresh ours after addon load without touching its own errors.
-        if C_Timer and C_Timer.After then
-            C_Timer.After(0, EnsureTargetedErrorFilter)
         end
     elseif event == "PLAYER_LOGIN" then
         ApplyLocalizationFix("PLAYER_LOGIN")
-        ScheduleErrorFilterRefresh()
+        ScheduleErrorFilterInstall()
     elseif event == "PLAYER_ENTERING_WORLD" then
         ApplyLocalizationFix("PLAYER_ENTERING_WORLD")
-        ScheduleErrorFilterRefresh()
+        ScheduleErrorFilterInstall()
     end
 end)
 
@@ -225,24 +215,22 @@ SlashCmdList.FOREVERCHARACTERFIX = function(msg)
 
     if msg == "reapply" then
         local ok = ApplyLocalizationFix("manual /fcf reapply")
-        ScheduleErrorFilterRefresh()
         print("|cff33ff99ForeverCharacterFix:|r reapply = " .. tostring(ok))
         return
     end
 
     if msg == "filter" then
-        local ok = EnsureTargetedErrorFilter()
+        local ok = InstallTargetedErrorFilter()
         print("|cff33ff99ForeverCharacterFix:|r targeted error filter = " .. tostring(ok))
         return
     end
 
     local _, classToken = UnitClass("player")
-    local filterActive = type(geterrorhandler) == "function" and geterrorhandler() == ForeverCharacterFixErrorHandler
 
     print("|cff33ff99ForeverCharacterFix " .. VERSION .. "|r")
     print("Apply count: " .. tostring(applyCount) .. "; last: " .. tostring(lastApplyReason))
     print("Missing strings written this session: " .. tostring(totalWrites))
-    print("Targeted taint filter: " .. (filterActive and "|cff00ff00active|r" or "|cffffff00inactive|r"))
+    print("Targeted taint filter: " .. (errorFilterInstalled and "|cff00ff00active|r" or "|cffffff00not installed yet|r"))
     print("Secret-value taint errors hidden: " .. tostring(suppressedErrors))
     print("Current class: " .. tostring(classToken))
 
