@@ -3,6 +3,6 @@
 ## Notes: Fixes broken Russian Character Frame localization in WoW Forever Beta.
 ## Notes-ruRU: Исправляет сломанную русскую локализацию окна персонажа в WoW Forever Beta.
 ## Author: makaren-pro
-## Version: 1.2.2
+## Version: 1.2.3
 
 ForeverCharacterFix.lua
