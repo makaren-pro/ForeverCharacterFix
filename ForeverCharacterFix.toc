@@ -1,0 +1,8 @@
+## Interface: 16001
+## Title: ForeverCharacterFix
+## Notes: Fixes broken Russian localization strings in WoW Forever Beta Character Frame.
+## Notes-ruRU: Исправляет сломанные русские строки окна персонажа в WoW Forever Beta.
+## Author: makaren-pro
+## Version: 1.2.1
+
+ForeverCharacterFix.lua
