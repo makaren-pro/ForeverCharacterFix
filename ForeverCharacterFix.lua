@@ -1,15 +1,17 @@
 local ADDON_NAME = ...
 
--- ForeverCharacterFix 1.2.1
+-- ForeverCharacterFix 1.2.2
 -- ruRU Character Frame workaround for WoW Forever Beta.
 --
--- No Blizzard CharacterFrame/PaperDoll/TextStatusBar functions are hooked or replaced.
+-- The localization fix still taints Blizzard execution on the current beta build.
+-- We therefore suppress only secret-number Lua errors explicitly attributed to
+-- ForeverCharacterFix. Unrelated Lua errors continue to use the existing handler.
 
 if GetLocale and GetLocale() ~= "ruRU" then
     return
 end
 
-local VERSION = "1.2.1"
+local VERSION = "1.2.2"
 
 local CLASS_TOKENS = {
     "WARRIOR",
@@ -36,8 +38,8 @@ local applyCount = 0
 local lastApplyReason = "never"
 local suppressedErrors = 0
 
-local errorFilterInstalled = false
 local previousErrorHandler
+local ForeverCharacterFixErrorHandler
 
 local function Upper(value)
     if type(strupper) == "function" then
@@ -112,48 +114,67 @@ local function ApplyLocalizationFix(reason)
     return true
 end
 
-local function IsKnownSecondaryTaintError(message)
+local function IsForeverCharacterFixSecretTaintError(message)
     if type(message) ~= "string" then
         return false
     end
 
-    return
-        message:find("TextStatusBar.lua", 1, true) ~= nil and
-        message:find("attempt to compare a secret number value", 1, true) ~= nil and
-        (
-            message:find("execution tainted by 'ForeverCharacterFix'", 1, true) ~= nil or
-            message:find('execution tainted by "ForeverCharacterFix"', 1, true) ~= nil
-        )
-end
+    local attributedToUs =
+        message:find("tainted by 'ForeverCharacterFix'", 1, true) ~= nil or
+        message:find('tainted by "ForeverCharacterFix"', 1, true) ~= nil or
+        message:find("tainted by ForeverCharacterFix", 1, true) ~= nil
 
-local function InstallTargetedErrorFilter()
-    if errorFilterInstalled then
-        return true
+    if not attributedToUs then
+        return false
     end
 
+    return
+        message:find("secret number", 1, true) ~= nil or
+        message:find("secret value", 1, true) ~= nil
+end
+
+ForeverCharacterFixErrorHandler = function(message)
+    if IsForeverCharacterFixSecretTaintError(message) then
+        suppressedErrors = suppressedErrors + 1
+        return
+    end
+
+    if type(previousErrorHandler) == "function" then
+        return previousErrorHandler(message)
+    end
+end
+
+local function EnsureTargetedErrorFilter()
     if type(geterrorhandler) ~= "function" or type(seterrorhandler) ~= "function" then
         return false
     end
 
     local current = geterrorhandler()
+    if current == ForeverCharacterFixErrorHandler then
+        return true
+    end
+
     if type(current) ~= "function" then
         return false
     end
 
+    -- Preserve whichever error handler is active at this moment (Blizzard,
+    -- BugGrabber, BugSack, etc.) and forward every unrelated error to it.
     previousErrorHandler = current
-
-    local function ForeverCharacterFixErrorHandler(message)
-        if IsKnownSecondaryTaintError(message) then
-            suppressedErrors = suppressedErrors + 1
-            return
-        end
-
-        return previousErrorHandler(message)
-    end
-
     seterrorhandler(ForeverCharacterFixErrorHandler)
-    errorFilterInstalled = true
-    return true
+
+    return geterrorhandler() == ForeverCharacterFixErrorHandler
+end
+
+local function ScheduleErrorFilterRefresh()
+    EnsureTargetedErrorFilter()
+
+    if C_Timer and C_Timer.After then
+        C_Timer.After(0, EnsureTargetedErrorFilter)
+        C_Timer.After(1, EnsureTargetedErrorFilter)
+        C_Timer.After(3, EnsureTargetedErrorFilter)
+        C_Timer.After(5, EnsureTargetedErrorFilter)
+    end
 end
 
 local events = CreateFrame("Frame")
@@ -176,24 +197,22 @@ events:SetScript("OnEvent", function(self, event, arg1)
                     ApplyLocalizationFix("post Blizzard_UIPanels_Game")
                 end)
             end
+
+            ScheduleErrorFilterRefresh()
             return
+        end
+
+        -- Another addon may replace the global error handler while loading.
+        -- Refresh ours after addon load without touching its own errors.
+        if C_Timer and C_Timer.After then
+            C_Timer.After(0, EnsureTargetedErrorFilter)
         end
     elseif event == "PLAYER_LOGIN" then
         ApplyLocalizationFix("PLAYER_LOGIN")
-
-        if C_Timer and C_Timer.After then
-            C_Timer.After(1, InstallTargetedErrorFilter)
-        else
-            InstallTargetedErrorFilter()
-        end
+        ScheduleErrorFilterRefresh()
     elseif event == "PLAYER_ENTERING_WORLD" then
         ApplyLocalizationFix("PLAYER_ENTERING_WORLD")
-
-        if C_Timer and C_Timer.After then
-            C_Timer.After(2, InstallTargetedErrorFilter)
-        else
-            InstallTargetedErrorFilter()
-        end
+        ScheduleErrorFilterRefresh()
     end
 end)
 
@@ -206,16 +225,25 @@ SlashCmdList.FOREVERCHARACTERFIX = function(msg)
 
     if msg == "reapply" then
         local ok = ApplyLocalizationFix("manual /fcf reapply")
+        ScheduleErrorFilterRefresh()
         print("|cff33ff99ForeverCharacterFix:|r reapply = " .. tostring(ok))
         return
     end
 
+    if msg == "filter" then
+        local ok = EnsureTargetedErrorFilter()
+        print("|cff33ff99ForeverCharacterFix:|r targeted error filter = " .. tostring(ok))
+        return
+    end
+
     local _, classToken = UnitClass("player")
+    local filterActive = type(geterrorhandler) == "function" and geterrorhandler() == ForeverCharacterFixErrorHandler
+
     print("|cff33ff99ForeverCharacterFix " .. VERSION .. "|r")
     print("Apply count: " .. tostring(applyCount) .. "; last: " .. tostring(lastApplyReason))
     print("Missing strings written this session: " .. tostring(totalWrites))
-    print("Targeted taint filter: " .. (errorFilterInstalled and "|cff00ff00active|r" or "|cffffff00not installed yet|r"))
-    print("Secondary taint errors hidden: " .. tostring(suppressedErrors))
+    print("Targeted taint filter: " .. (filterActive and "|cff00ff00active|r" or "|cffffff00inactive|r"))
+    print("Secret-value taint errors hidden: " .. tostring(suppressedErrors))
     print("Current class: " .. tostring(classToken))
 
     if classToken then
